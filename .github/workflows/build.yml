@@ -22,6 +22,28 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3
       
+    - name: Install ATL/MFC for Visual Studio
+      shell: powershell
+      run: |
+        # Find Visual Studio Installer
+        $vsInstaller = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property productPath
+        
+        if ($vsInstaller) {
+          Write-Host "Installing ATL/MFC components..."
+          $vsPath = Split-Path $vsInstaller -Parent
+          $vsInstallerExe = Join-Path $vsPath "vs_installer.exe"
+          
+          if (Test-Path $vsInstallerExe) {
+            # Install ATL/MFC for x86 and x64
+            Start-Process -FilePath $vsInstallerExe -ArgumentList "modify", "--installPath", (Split-Path $vsPath -Parent), "--add", "Microsoft.VisualStudio.Component.VC.ATL", "--add", "Microsoft.VisualStudio.Component.VC.ATLMFC", "--includeRecommended", "--passive", "--norestart", "--quiet" -Wait
+            Write-Host "ATL/MFC installation completed"
+          } else {
+            Write-Host "Visual Studio Installer not found at: $vsInstallerExe"
+          }
+        } else {
+          Write-Host "Visual Studio not found"
+        }
+      
     - name: Setup vcpkg (x86)
       uses: lukka/run-vcpkg@v11
       with:
