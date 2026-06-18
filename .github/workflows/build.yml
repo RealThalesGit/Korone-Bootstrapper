@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022  # Usar Windows Server 2022 com Visual Studio 2022
     
     steps:
     - name: Checkout Code
@@ -22,26 +22,65 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.3
       
-    - name: Install ATL/MFC for Visual Studio
+    - name: Add Visual Studio to PATH
       shell: powershell
       run: |
-        # Find Visual Studio Installer
-        $vsInstaller = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property productPath
+        # Adicionar Visual Studio ao PATH
+        $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+        echo "VS_PATH=$vsPath" >> $env:GITHUB_ENV
         
-        if ($vsInstaller) {
-          Write-Host "Installing ATL/MFC components..."
-          $vsPath = Split-Path $vsInstaller -Parent
-          $vsInstallerExe = Join-Path $vsPath "vs_installer.exe"
+        # Verificar se ATL existe
+        $atlPath = Join-Path $vsPath "VC\Tools\MSVC\*\atlmfc\include"
+        $atlExists = Get-ChildItem -Path $atlPath -Directory -ErrorAction SilentlyContinue
+        
+        if (-not $atlExists) {
+          Write-Host "ATL not found. Checking alternative locations..."
           
-          if (Test-Path $vsInstallerExe) {
-            # Install ATL/MFC for x86 and x64
-            Start-Process -FilePath $vsInstallerExe -ArgumentList "modify", "--installPath", (Split-Path $vsPath -Parent), "--add", "Microsoft.VisualStudio.Component.VC.ATL", "--add", "Microsoft.VisualStudio.Component.VC.ATLMFC", "--includeRecommended", "--passive", "--norestart", "--quiet" -Wait
-            Write-Host "ATL/MFC installation completed"
-          } else {
-            Write-Host "Visual Studio Installer not found at: $vsInstallerExe"
+          # Tentar encontrar ATL em outras localizações
+          $possiblePaths = @(
+            "C:\Program Files\Microsoft Visual Studio\*\Enterprise\VC\Tools\MSVC\*\atlmfc\include",
+            "C:\Program Files\Microsoft Visual Studio\*\Professional\VC\Tools\MSVC\*\atlmfc\include",
+            "C:\Program Files\Microsoft Visual Studio\*\Community\VC\Tools\MSVC\*\atlmfc\include"
+          )
+          
+          foreach ($path in $possiblePaths) {
+            $found = Get-ChildItem -Path $path -Directory -ErrorAction SilentlyContinue
+            if ($found) {
+              Write-Host "Found ATL at: $($found.FullName)"
+              $atlDir = $found.FullName
+              break
+            }
+          }
+          
+          if (-not $atlDir) {
+            Write-Host "ATL/MFC not found. Installing..."
+            
+            # Baixar e instalar o Build Tools para obter ATL/MFC
+            $installerUrl = "https://aka.ms/vs/17/release/vs_buildtools.exe"
+            $installerPath = "$env:TEMP\vs_buildtools.exe"
+            
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+            
+            Start-Process -FilePath $installerPath -ArgumentList @(
+              "--quiet",
+              "--wait",
+              "--norestart",
+              "--nocache",
+              "--add", "Microsoft.VisualStudio.Workload.VCTools",
+              "--add", "Microsoft.VisualStudio.Component.VC.ATL",
+              "--add", "Microsoft.VisualStudio.Component.VC.ATLMFC",
+              "--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+              "--includeRecommended"
+            ) -Wait
+            
+            Write-Host "Visual Studio Build Tools installation completed"
+            
+            # Atualizar PATH do Visual Studio
+            $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+            echo "VS_PATH=$vsPath" >> $env:GITHUB_ENV
           }
         } else {
-          Write-Host "Visual Studio not found"
+          Write-Host "ATL already installed at: $($atlExists.FullName)"
         }
       
     - name: Setup vcpkg (x86)
@@ -82,11 +121,27 @@ jobs:
         
     - name: Build Solution (x86) with Debug Symbols
       run: |
-        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
+        # Encontrar o diretório ATL/MFC para adicionar ao include path
+        $atlInclude = (Get-ChildItem -Path "${env:VS_PATH}\VC\Tools\MSVC\*\atlmfc\include" -Directory | Select-Object -First 1).FullName
+        if (-not $atlInclude) {
+          $atlInclude = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\atlmfc\include" -Directory -Recurse | Select-Object -First 1).FullName
+        }
+        
+        Write-Host "Using ATL include path: $atlInclude"
+        
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false /p:IncludePath="$atlInclude;$(IncludePath)"
 
     - name: Build Solution (x64) with Debug Symbols
       run: |
-        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
+        # Encontrar o diretório ATL/MFC para adicionar ao include path
+        $atlInclude = (Get-ChildItem -Path "${env:VS_PATH}\VC\Tools\MSVC\*\atlmfc\include" -Directory | Select-Object -First 1).FullName
+        if (-not $atlInclude) {
+          $atlInclude = (Get-ChildItem -Path "C:\Program Files\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\atlmfc\include" -Directory -Recurse | Select-Object -First 1).FullName
+        }
+        
+        Write-Host "Using ATL include path: $atlInclude"
+        
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false /p:IncludePath="$atlInclude;$(IncludePath)"
         
     - name: Verify Executables and PDBs Exist
       run: |
