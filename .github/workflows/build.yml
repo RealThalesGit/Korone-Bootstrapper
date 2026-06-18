@@ -1,4 +1,4 @@
-name: Bootstrapper x86/x64 Release
+name: Bootstrapper x86/x64 Debug with Symbols
 
 permissions:
   contents: write
@@ -58,103 +58,125 @@ jobs:
       run: |
         & "${{ github.workspace }}/vcpkg-x64/vcpkg.exe" integrate install
         
-    - name: Build Solution (x86)
+    - name: Build Solution (x86) with Debug Symbols
       run: |
-        msbuild "Installer.sln" /p:Configuration=Release /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86"
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
 
-    - name: Build Solution (x64)
+    - name: Build Solution (x64) with Debug Symbols
       run: |
-        msbuild "Installer.sln" /p:Configuration=Release /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64"
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
         
-    - name: Verify Executables Exist
+    - name: Verify Executables and PDBs Exist
       run: |
-        $x86Exists = Test-Path "BootstrapperClient\bin\Release\Win32\PekoraPlayerLauncher.exe"
-        $x64Exists = Test-Path "BootstrapperClient\bin\Release\x64\PekoraPlayerLauncher.exe"
+        $x86ExeExists = Test-Path "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.exe"
+        $x86PdbExists = Test-Path "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.pdb"
+        $x64ExeExists = Test-Path "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.exe"
+        $x64PdbExists = Test-Path "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.pdb"
 
-        if ($x86Exists) {
+        if ($x86ExeExists) {
           Write-Host "PekoraPlayerLauncher.exe (x86) built successfully!"
-          Get-Item "BootstrapperClient\bin\Release\Win32\PekoraPlayerLauncher.exe" | Select-Object Name, Length, LastWriteTime
+          Get-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.exe" | Select-Object Name, Length, LastWriteTime
         } else {
-          Write-Host "PekoraPlayerLauncher.exe (x86) not found!"
+          Write-Host "ERROR: PekoraPlayerLauncher.exe (x86) not found!"
+          exit 1
         }
 
-        if ($x64Exists) {
+        if ($x86PdbExists) {
+          Write-Host "PekoraPlayerLauncher.pdb (x86) generated successfully!"
+          Get-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.pdb" | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Host "WARNING: PekoraPlayerLauncher.pdb (x86) not found!"
+        }
+
+        if ($x64ExeExists) {
           Write-Host "PekoraPlayerLauncher.exe (x64) built successfully!"
-          Get-Item "BootstrapperClient\bin\Release\x64\PekoraPlayerLauncher.exe" | Select-Object Name, Length, LastWriteTime
+          Get-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.exe" | Select-Object Name, Length, LastWriteTime
         } else {
-          Write-Host "PekoraPlayerLauncher.exe (x64) not found!"
+          Write-Host "ERROR: PekoraPlayerLauncher.exe (x64) not found!"
+          exit 1
         }
 
-        if (-not $x86Exists -and -not $x64Exists) {
+        if ($x64PdbExists) {
+          Write-Host "PekoraPlayerLauncher.pdb (x64) generated successfully!"
+          Get-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.pdb" | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Host "WARNING: PekoraPlayerLauncher.pdb (x64) not found!"
+        }
+
+        if (-not $x86ExeExists -and -not $x64ExeExists) {
           Write-Host "No executables found!"
           Get-ChildItem -Recurse -Name "*.exe" | ForEach-Object { Write-Host "Found: $_" }
           exit 1
         }
         
-    - name: Upload Build Artifacts (x86)
+    - name: Upload Build Artifacts (x86) with PDB
       uses: actions/upload-artifact@v4
       with:
-        name: PekoraPlayerLauncher-x86-Release
+        name: PekoraPlayerLauncher-x86-Debug
         path: |
-          BootstrapperClient\bin\Release\Win32\PekoraPlayerLauncher.exe
+          BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.exe
+          BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.pdb
         retention-days: 30
 
-    - name: Upload Build Artifacts (x64)
+    - name: Upload Build Artifacts (x64) with PDB
       uses: actions/upload-artifact@v4
       with:
-        name: PekoraPlayerLauncher-x64-Release
+        name: PekoraPlayerLauncher-x64-Debug
         path: |
-          BootstrapperClient\bin\Release\x64\PekoraPlayerLauncher.exe
+          BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.exe
+          BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.pdb
         retention-days: 30
         
-    - name: Create Release Package (x86)
+    - name: Create Release Package (x86) with Symbols
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       run: |
-        $zipName = "PekoraPlayerLauncher-x86.zip"
+        $zipName = "PekoraPlayerLauncher-x86-Debug-Symbols.zip"
 
         # Create a temporary directory for packaging
         New-Item -ItemType Directory -Path "release-package-x86" -Force
 
-        # Copy the executable
-        Copy-Item "BootstrapperClient\bin\Release\Win32\PekoraPlayerLauncher.exe" "release-package-x86\"
+        # Copy the executable and PDB
+        Copy-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.exe" "release-package-x86\"
+        Copy-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.pdb" "release-package-x86\" -ErrorAction SilentlyContinue
 
         # Create the zip file
         Compress-Archive -Path "release-package-x86\*" -DestinationPath $zipName -Force
 
-        Write-Host "Created Release Package: $zipName"
+        Write-Host "Created Debug Package: $zipName"
         Get-Item $zipName | Select-Object Name, Length
 
-    - name: Create Release Package (x64)
+    - name: Create Release Package (x64) with Symbols
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       run: |
-        $zipName = "PekoraPlayerLauncher-x64.zip"
+        $zipName = "PekoraPlayerLauncher-x64-Debug-Symbols.zip"
 
         # Create a temporary directory for packaging
         New-Item -ItemType Directory -Path "release-package-x64" -Force
 
-        # Copy the executable
-        Copy-Item "BootstrapperClient\bin\Release\x64\PekoraPlayerLauncher.exe" "release-package-x64\"
+        # Copy the executable and PDB
+        Copy-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.exe" "release-package-x64\"
+        Copy-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.pdb" "release-package-x64\" -ErrorAction SilentlyContinue
 
         # Create the release package
         Compress-Archive -Path "release-package-x64\*" -DestinationPath $zipName -Force
 
-        Write-Host "Created Release Package: $zipName"
+        Write-Host "Created Debug Package: $zipName"
         Get-Item $zipName | Select-Object Name, Length
 
     - name: Upload Release Package (x86)
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       uses: actions/upload-artifact@v4
       with:
-        name: Release-Package-x86
-        path: "PekoraPlayerLauncher-x86.zip"
+        name: Release-Package-x86-Debug
+        path: "PekoraPlayerLauncher-x86-Debug-Symbols.zip"
         retention-days: 90
 
     - name: Upload Release Package (x64)
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       uses: actions/upload-artifact@v4
       with:
-        name: Release-Package-x64
-        path: "PekoraPlayerLauncher-x64.zip"
+        name: Release-Package-x64-Debug
+        path: "PekoraPlayerLauncher-x64-Debug-Symbols.zip"
         retention-days: 90
 
     - name: Create GitHub Release
@@ -164,14 +186,23 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: v1.7.0.4
-        release_name: "Release 1.7.0.4"
+        tag_name: v1.7.0.4-debug
+        release_name: "Debug Build 1.7.0.4 with Symbols"
         body: |
-          ## Release 1.7.0.4
-
+          ## Debug Build 1.7.0.4 with Debug Symbols
+          
+          **Build Type:** Debug (with full debug symbols)
           **Build Date:** ${{ github.event.head_commit.timestamp }}
           **Commit:** ${{ github.sha }}
           **Platforms:** Windows x86 (32-bit) and x64 (64-bit)
+          
+          ### Included Files:
+          - Executable (.exe)
+          - Debug Symbols (.pdb)
+          
+          ### Note:
+          This build includes full debug symbols and is not optimized.
+          Use for debugging and development purposes only.
 
     - name: Upload Release Asset (x86)
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
@@ -180,8 +211,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: PekoraPlayerLauncher-x86.zip
-        asset_name: PekoraPlayerLauncher-x86.zip
+        asset_path: PekoraPlayerLauncher-x86-Debug-Symbols.zip
+        asset_name: PekoraPlayerLauncher-x86-Debug-Symbols.zip
         asset_content_type: application/zip
 
     - name: Upload Release Asset (x64)
@@ -191,6 +222,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: PekoraPlayerLauncher-x64.zip
-        asset_name: PekoraPlayerLauncher-x64.zip
+        asset_path: PekoraPlayerLauncher-x64-Debug-Symbols.zip
+        asset_name: PekoraPlayerLauncher-x64-Debug-Symbols.zip
         asset_content_type: application/zip
