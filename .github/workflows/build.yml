@@ -13,7 +13,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2022  # Usar Windows Server 2022 com Visual Studio 2022
+    runs-on: windows-2022
     
     steps:
     - name: Checkout Code
@@ -25,11 +25,9 @@ jobs:
     - name: Find ATL/MFC Include Path
       shell: powershell
       run: |
-        # Encontrar Visual Studio
         $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
         echo "VS_PATH=$vsPath" >> $env:GITHUB_ENV
         
-        # Encontrar ATL/MFC include
         $atlInclude = (Get-ChildItem -Path "$vsPath\VC\Tools\MSVC\*\atlmfc\include" -Directory | Select-Object -First 1).FullName
         
         if ($atlInclude) {
@@ -79,12 +77,12 @@ jobs:
     - name: Build Solution (x86) with Debug Symbols
       shell: cmd
       run: |
-        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=Win32 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x86-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x86" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false /p:LanguageStandard=stdcpp17
 
     - name: Build Solution (x64) with Debug Symbols
       shell: cmd
       run: |
-        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false
+        msbuild "Installer.sln" /p:Configuration=Debug /p:Platform=x64 /p:VcpkgEnabled=true /p:VcpkgUseStatic=true /p:VcpkgTriplet=x64-windows-static /p:VcpkgRoot="${{ github.workspace }}/vcpkg-x64" /p:GenerateFullPaths=true /p:DebugSymbols=true /p:DebugType=full /p:Optimize=false /p:LanguageStandard=stdcpp17
         
     - name: Verify Executables and PDBs Exist
       run: |
@@ -151,17 +149,10 @@ jobs:
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       run: |
         $zipName = "PekoraPlayerLauncher-x86-Debug-Symbols.zip"
-
-        # Create a temporary directory for packaging
         New-Item -ItemType Directory -Path "release-package-x86" -Force
-
-        # Copy the executable and PDB
         Copy-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.exe" "release-package-x86\"
         Copy-Item "BootstrapperClient\bin\Debug\Win32\PekoraPlayerLauncher.pdb" "release-package-x86\" -ErrorAction SilentlyContinue
-
-        # Create the zip file
         Compress-Archive -Path "release-package-x86\*" -DestinationPath $zipName -Force
-
         Write-Host "Created Debug Package: $zipName"
         Get-Item $zipName | Select-Object Name, Length
 
@@ -169,17 +160,10 @@ jobs:
       if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
       run: |
         $zipName = "PekoraPlayerLauncher-x64-Debug-Symbols.zip"
-
-        # Create a temporary directory for packaging
         New-Item -ItemType Directory -Path "release-package-x64" -Force
-
-        # Copy the executable and PDB
         Copy-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.exe" "release-package-x64\"
         Copy-Item "BootstrapperClient\bin\Debug\x64\PekoraPlayerLauncher.pdb" "release-package-x64\" -ErrorAction SilentlyContinue
-
-        # Create the release package
         Compress-Archive -Path "release-package-x64\*" -DestinationPath $zipName -Force
-
         Write-Host "Created Debug Package: $zipName"
         Get-Item $zipName | Select-Object Name, Length
 
